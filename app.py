@@ -9,49 +9,157 @@ import math
 import html
 import urllib.parse
 
+try:
+    import psycopg2
+except ImportError:
+    psycopg2 = None
+
 app = Flask(__name__)
 
 DB_NAME = "portfolio.db"
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 
 
-def safe_float(value, default=0.0):
+def using_postgres():
+    return bool(DATABASE_URL)
+
+
+def normalized_database_url():
+    if not DATABASE_URL:
+        return ""
+
+    url = DATABASE_URL
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+
+    if "sslmode=" not in url:
+        separator = "&" if "?" in url else "?"
+        url = f"{url}{separator}sslmode=require"
+
+    return url
+
+
+def get_db_connection():
+    if using_postgres():
+        if psycopg2 is None:
+            raise RuntimeError("psycopg2 is required when DATABASE_URL is set")
+        return psycopg2.connect(normalized_database_url())
+
+    return sqlite3.connect(DB_NAME)
+
+
+def safe_number(value, default=0.0):
     try:
         return float(value)
     except (TypeError, ValueError):
         return float(default)
 
 
-def format_volume(value):
-    v = safe_float(value, default=-1)
-    if v < 0:
-        return "N/A"
-    return f"{int(v):,}"
+def safe_int(value, default=0):
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return int(default)
 
 
-def format_market_cap(value):
-    cap = safe_float(value, default=-1)
-    if cap < 0:
-        return "N/A"
-    if cap >= 1_000_000_000_000:
-        return f"Rs{cap / 1_000_000_000_000:.2f}T"
-    if cap >= 1_000_000_000:
-        return f"Rs{cap / 1_000_000_000:.2f}B"
-    if cap >= 10_000_000:
-        return f"Rs{cap / 10_000_000:.2f}Cr"
-    return f"Rs{cap:,.0f}"
+def fetch_ticker_snapshot(symbol, suffix=".NS"):
+    ticker = yf.Ticker(f"{symbol}{suffix}")
+    info = {}
+    history = None
+
+    try:
+        info = ticker.fast_info or {}
+    except Exception:
+        info = {}
+
+    try:
+        history = ticker.history(period="5d", interval="1d")
+    except Exception:
+        history = None
+
+    last_close = None
+    previous_close = None
+    latest_volume = None
+
+    if history is not None and not history.empty:
+        closes = history["Close"].dropna().tolist()
+        volumes = history["Volume"].dropna().tolist() if "Volume" in history.columns else []
+        if closes:
+            last_close = safe_number(closes[-1], default=0.0)
+        if len(closes) >= 2:
+            previous_close = safe_number(closes[-2], default=0.0)
+        if volumes:
+            latest_volume = safe_int(volumes[-1], default=0)
+
+    current_price = safe_number(
+        getattr(info, "lastPrice", None)
+        or getattr(info, "regularMarketPrice", None)
+        or info.get("lastPrice")
+        or info.get("regularMarketPrice")
+        or info.get("currentPrice")
+        or last_close,
+        default=0.0,
+    )
+
+    if not current_price and last_close:
+        current_price = last_close
+
+    if previous_close is None:
+        previous_close = safe_number(
+            info.get("previousClose") or info.get("regularMarketPreviousClose"),
+            default=0.0,
+        )
+
+    change_value = 0.0
+    change_percent = 0.0
+    if current_price and previous_close:
+        change_value = current_price - previous_close
+        change_percent = (change_value / previous_close) * 100 if previous_close else 0.0
+    else:
+        change_value = safe_number(info.get("regularMarketChange") or 0.0)
+        change_percent = safe_number(info.get("regularMarketChangePercent") or 0.0)
+
+    volume = latest_volume if latest_volume is not None else safe_int(info.get("volume") or info.get("lastVolume") or 0)
+    market_cap = safe_number(info.get("marketCap") or 0)
+
+    if not market_cap and current_price:
+        shares = safe_number(info.get("shares") or info.get("sharesOutstanding") or 0)
+        if shares:
+            market_cap = current_price * shares
+
+    company_name = (
+        info.get("longName")
+        or info.get("shortName")
+        or f"{symbol} Ltd"
+    )
+
+    return {
+        "symbol": symbol,
+        "name": company_name,
+        "price": round(current_price, 2),
+        "change_percent": round(change_percent, 2),
+        "change_value": round(change_value, 2),
+        "volume": f"{volume:,}" if volume else "N/A",
+        "market_cap": f"₹{(market_cap / 1_000_000_000):.2f}B" if market_cap else "N/A",
+        "_raw_info": info,
+    }
 
 def init_db():
-    with sqlite3.connect(DB_NAME) as conn:
-        cur = conn.cursor()
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS portfolio (
-                symbol TEXT PRIMARY KEY,
-                name TEXT,
-                sector TEXT
-            )
-        """)
+    conn = get_db_connection()
+    cur = conn.cursor()
 
-init_db()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS portfolio (
+            symbol TEXT PRIMARY KEY,
+            name TEXT,
+            sector TEXT
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+init_db()   # 🔥 THIS LINE IS REQUIRED
 
 
 
@@ -107,9 +215,8 @@ def get_stock_news(symbol, max_items=8):
     feed = feedparser.parse(url)
     news_list = []
 
-    for e in getattr(feed, "entries", [])[:max_items]:
-        title = clean_html(getattr(e, "title", ""))
-        text = title.lower()
+    for e in feed.entries[:max_items]:
+        text = e.title.lower()
         if any(x in text for x in ["gain", "up", "profit", "jump"]):
             sentiment = "positive"
         elif any(x in text for x in ["loss", "fall", "drop", "down"]):
@@ -120,9 +227,9 @@ def get_stock_news(symbol, max_items=8):
         source = getattr(getattr(e, "source", None), "title", "Google News")
 
         news_list.append({
-            "title": title,
+            "title": clean_html(e.title),
             "summary": clean_html(getattr(e, "summary", "")),
-            "url": getattr(e, "link", "#"),
+            "url": e.link,
             "source": source,
             "sentiment": sentiment
         })
@@ -140,14 +247,12 @@ def get_indices():
     result = []
     for name, symbol in indices.items():
         try:
-            t = yf.Ticker(symbol)
-            info = t.info
-
+            snapshot = fetch_ticker_snapshot(symbol, suffix="")
             result.append({
                 "name": name,
-                "price": round(safe_float(info.get("regularMarketPrice", 0)), 2),
-                "change": round(safe_float(info.get("regularMarketChange", 0)), 2),
-                "change_percent": round(safe_float(info.get("regularMarketChangePercent", 0)), 2)
+                "price": snapshot["price"],
+                "change": snapshot["change_value"],
+                "change_percent": snapshot["change_percent"],
             })
         except Exception:
             continue
@@ -158,19 +263,7 @@ def get_live_data(symbols):
     data = []
     for s in symbols:
         try:
-            t = yf.Ticker(s + ".NS")
-            info = t.info or {}
-
-            data.append({
-                "symbol": s,
-                "name": info.get("longName", f"{s} Ltd"),
-                "price": round(safe_float(info.get("currentPrice", 0)), 2),
-                "change_percent": round(safe_float(info.get("regularMarketChangePercent", 0)), 2),
-                "change_value": round(safe_float(info.get("regularMarketChange", 0)), 2),
-                "volume": format_volume(info.get("volume")),
-                "market_cap": format_market_cap(info.get("marketCap")),
-                "_raw_info": info
-            })
+            data.append(fetch_ticker_snapshot(s))
         except Exception:
             data.append({
                 "symbol": s,
@@ -185,10 +278,12 @@ def get_live_data(symbols):
     return data
 
 def get_portfolio_symbols():
-    with sqlite3.connect(DB_NAME) as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT symbol FROM portfolio")
-        return [row[0] for row in cur.fetchall()]
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT symbol FROM portfolio")
+    out = [row[0] for row in cur.fetchall()]
+    conn.close()
+    return out
 
 
 def sparkline_from_prices(prices, max_points=36):
@@ -205,10 +300,11 @@ def sparkline_from_prices(prices, max_points=36):
 # ============================================
 @app.route("/api/portfolio_data")
 def api_portfolio_data():
-    with sqlite3.connect(DB_NAME) as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT symbol, name, sector FROM portfolio ORDER BY sector, name")
-        rows = cur.fetchall()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT symbol, name, sector FROM portfolio")
+    rows = cur.fetchall()
+    conn.close()
 
     if not rows:
         return jsonify({"data": []})
@@ -228,15 +324,13 @@ def api_portfolio_data():
             df = yf.Ticker(sym + ".NS").history(period="1mo", interval="1d")
             if not df.empty:
                 spark_prices = df["Close"].dropna().tolist()
-        except Exception:
+        except:
             pass
-
-        meta_row = meta.get(sym, {"name": item["name"], "sector": "Unknown"})
 
         enriched.append({
             "symbol": sym,
-            "name": meta_row["name"],
-            "sector": meta_row["sector"],
+            "name": meta[sym]["name"],
+            "sector": meta[sym]["sector"],
             "price": item["price"],
             "change_value": item["change_value"],
             "change_percent": item["change_percent"],
@@ -322,7 +416,7 @@ def telecom():
 # ADD / REMOVE PORTFOLIO
 @app.post("/add_to_portfolio")
 def add_to_portfolio():
-    data = request.get_json(silent=True) or {}
+    data = request.json or {}
     symbol = str(data.get("symbol", "")).strip().upper()
     name = str(data.get("name", "")).strip()
     sector = str(data.get("sector", "")).strip()
@@ -330,29 +424,47 @@ def add_to_portfolio():
     if not symbol or not name or not sector:
         return jsonify({"added": False, "error": "symbol, name and sector are required"}), 400
 
-    with sqlite3.connect(DB_NAME) as conn:
-        cur = conn.cursor()
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    if using_postgres():
+        cur.execute(
+            """
+            INSERT INTO portfolio(symbol, name, sector)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (symbol) DO NOTHING
+            """,
+            (symbol, name, sector),
+        )
+    else:
         cur.execute("""
             INSERT OR IGNORE INTO portfolio(symbol, name, sector)
             VALUES (?, ?, ?)
         """, (symbol, name, sector))
-        inserted = cur.rowcount > 0
 
-    return jsonify({"added": inserted})
+    conn.commit()
+    conn.close()
+    return jsonify({"added": True})
 
 @app.post("/remove_from_portfolio")
 def remove_from_portfolio():
-    data = request.get_json(silent=True) or {}
+    data = request.json or {}
     symbol = str(data.get("symbol", "")).strip().upper()
+
     if not symbol:
         return jsonify({"removed": False, "error": "symbol is required"}), 400
 
-    with sqlite3.connect(DB_NAME) as conn:
-        cur = conn.cursor()
-        cur.execute("DELETE FROM portfolio WHERE symbol=?", (symbol,))
-        removed = cur.rowcount > 0
+    conn = get_db_connection()
+    cur = conn.cursor()
 
-    return jsonify({"removed": removed})
+    if using_postgres():
+        cur.execute("DELETE FROM portfolio WHERE symbol=%s", (symbol,))
+    else:
+        cur.execute("DELETE FROM portfolio WHERE symbol=?", (symbol,))
+
+    conn.commit()
+    conn.close()
+    return jsonify({"removed": True})
 
 @app.route("/dashboard")
 def dashboard_page():
@@ -360,10 +472,11 @@ def dashboard_page():
 
 @app.route("/portfolio")
 def portfolio_page():
-    with sqlite3.connect(DB_NAME) as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT symbol, name, sector FROM portfolio ORDER BY sector, name")
-        rows = cur.fetchall()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT symbol, name, sector FROM portfolio")
+    rows = cur.fetchall()
+    conn.close()
     return render_template("portfolio.html", stocks=rows)
 
 # API: AUTO REFRESH 1D CHART
@@ -388,7 +501,7 @@ def api_stock_chart(symbol):
 
         return jsonify({"dates": dates, "prices": prices})
 
-    except Exception:
+    except:
         return jsonify({"dates": [], "prices": []})
 
 @app.route("/stock/<symbol>")
@@ -404,7 +517,7 @@ def stock_detail(symbol):
             df = df.reset_index()
             idx = "Datetime" if "Datetime" in df.columns else "Date"
             return df[idx].dt.strftime("%d %b").tolist(), df["Close"].round(2).tolist()
-        except Exception:
+        except:
             return [], []
 
     # intraday
@@ -416,27 +529,37 @@ def stock_detail(symbol):
         idx = "Datetime" if "Datetime" in d1_df.columns else "Date"
         d1 = d1_df[idx].dt.strftime("%H:%M").tolist()
         p1 = d1_df["Close"].round(2).tolist()
-    except Exception:
+    except:
         d1, p1 = [], []
 
     d30, p30 = safe_history("1mo", "1d")
     d180, p180 = safe_history("6mo", "1wk")
 
     try:
-        info = ticker.info or {}
+        info = ticker.fast_info or {}
     except Exception:
         info = {}
+
+    try:
+        full_info = ticker.info or {}
+    except Exception:
+        full_info = {}
+
+    if not full_info:
+        full_info = info
+
+    snapshot = fetch_ticker_snapshot(symbol)
     news = get_stock_news(symbol)
 
     stock_data = {
         "symbol": symbol,
-        "company_name": info.get("longName", f"{symbol} Ltd"),
-        "price": round(safe_float(info.get("currentPrice", 0)), 2),
-        "change_percent": round(safe_float(info.get("regularMarketChangePercent", 0)), 2),
-        "change_value": round(safe_float(info.get("regularMarketChange", 0)), 2),
-        "volume": format_volume(info.get("volume")),
-        "market_cap": format_market_cap(info.get("marketCap")),
-        "pe_ratio": info.get("trailingPE"),
+        "company_name": full_info.get("longName") or full_info.get("shortName") or f"{symbol} Ltd",
+        "price": snapshot["price"],
+        "change_percent": snapshot["change_percent"],
+        "change_value": snapshot["change_value"],
+        "volume": snapshot["volume"],
+        "market_cap": snapshot["market_cap"],
+        "pe_ratio": full_info.get("trailingPE"),
 
         "chart_1d": {"dates": d1, "prices": p1},
         "chart_1m": {"dates": d30, "prices": p30},

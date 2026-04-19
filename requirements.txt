@@ -7,3 +7,4 @@ requests
 beautifulsoup4
 matplotlib
 gunicorn
+psycopg2-binary
