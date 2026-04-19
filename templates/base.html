@@ -178,6 +178,10 @@
         padding: 0.35rem 0.1rem;
       }
 
+      .main .container {
+        padding: 0.45rem 0.2rem !important;
+      }
+
       .main h2 {
         margin-top: 1.1rem;
         margin-bottom: 0.8rem;
@@ -186,8 +190,10 @@
       }
 
       .main .stock-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-        gap: 0.85rem;
+        display: grid !important;
+        grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)) !important;
+        gap: 0.75rem !important;
+        align-items: stretch;
       }
 
       .main .stock-card {
@@ -195,7 +201,11 @@
         border: 1px solid #d7dce4;
         border-radius: 16px;
         box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
-        padding: 0.9rem;
+        padding: 0.85rem;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        height: 100%;
       }
 
       .main .icon-top-right img {
@@ -205,15 +215,24 @@
       .main .stock-symbol {
         font-size: 1.4rem;
         line-height: 1;
+        overflow-wrap: anywhere;
       }
 
       .main .stock-name {
         font-size: 0.86rem;
+        overflow-wrap: anywhere;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        min-height: 2.35em;
       }
 
       .main .stock-price {
         font-size: 1.6rem;
         line-height: 1.15;
+        overflow-wrap: anywhere;
       }
 
       .main .stock-change {
@@ -221,11 +240,15 @@
       }
 
       .main .stock-footer {
-        flex-direction: row;
+        flex-direction: column !important;
         gap: 4px;
-        align-items: center;
-        justify-content: space-between;
+        align-items: flex-start !important;
+        justify-content: flex-start;
         font-size: 0.9rem;
+      }
+
+      .main .stock-footer span {
+        overflow-wrap: anywhere;
       }
 
       .main .analysis-btn,
@@ -293,6 +316,10 @@
 
       .timestamp {
         margin-left: 0;
+      }
+
+      .main .stock-grid {
+        grid-template-columns: 1fr !important;
       }
     }
 
