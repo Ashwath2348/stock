@@ -13,22 +13,45 @@ app = Flask(__name__)
 
 DB_NAME = "portfolio.db"
 
+
+def safe_float(value, default=0.0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def format_volume(value):
+    v = safe_float(value, default=-1)
+    if v < 0:
+        return "N/A"
+    return f"{int(v):,}"
+
+
+def format_market_cap(value):
+    cap = safe_float(value, default=-1)
+    if cap < 0:
+        return "N/A"
+    if cap >= 1_000_000_000_000:
+        return f"Rs{cap / 1_000_000_000_000:.2f}T"
+    if cap >= 1_000_000_000:
+        return f"Rs{cap / 1_000_000_000:.2f}B"
+    if cap >= 10_000_000:
+        return f"Rs{cap / 10_000_000:.2f}Cr"
+    return f"Rs{cap:,.0f}"
+
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    cur = conn.cursor()
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS portfolio (
+                symbol TEXT PRIMARY KEY,
+                name TEXT,
+                sector TEXT
+            )
+        """)
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS portfolio (
-            symbol TEXT PRIMARY KEY,
-            name TEXT,
-            sector TEXT
-        )
-    """)
-
-    conn.commit()
-    conn.close()
-
-init_db()   # 🔥 THIS LINE IS REQUIRED
+init_db()
 
 
 
@@ -84,8 +107,9 @@ def get_stock_news(symbol, max_items=8):
     feed = feedparser.parse(url)
     news_list = []
 
-    for e in feed.entries[:max_items]:
-        text = e.title.lower()
+    for e in getattr(feed, "entries", [])[:max_items]:
+        title = clean_html(getattr(e, "title", ""))
+        text = title.lower()
         if any(x in text for x in ["gain", "up", "profit", "jump"]):
             sentiment = "positive"
         elif any(x in text for x in ["loss", "fall", "drop", "down"]):
@@ -96,9 +120,9 @@ def get_stock_news(symbol, max_items=8):
         source = getattr(getattr(e, "source", None), "title", "Google News")
 
         news_list.append({
-            "title": clean_html(e.title),
+            "title": title,
             "summary": clean_html(getattr(e, "summary", "")),
-            "url": e.link,
+            "url": getattr(e, "link", "#"),
             "source": source,
             "sentiment": sentiment
         })
@@ -121,11 +145,11 @@ def get_indices():
 
             result.append({
                 "name": name,
-                "price": round(info.get("regularMarketPrice", 0), 2),
-                "change": round(info.get("regularMarketChange", 0), 2),
-                "change_percent": round(info.get("regularMarketChangePercent", 0), 2)
+                "price": round(safe_float(info.get("regularMarketPrice", 0)), 2),
+                "change": round(safe_float(info.get("regularMarketChange", 0)), 2),
+                "change_percent": round(safe_float(info.get("regularMarketChangePercent", 0)), 2)
             })
-        except:
+        except Exception:
             continue
 
     return result
@@ -140,14 +164,14 @@ def get_live_data(symbols):
             data.append({
                 "symbol": s,
                 "name": info.get("longName", f"{s} Ltd"),
-                "price": round(info.get("currentPrice", 0), 2),
-                "change_percent": round(info.get("regularMarketChangePercent", 0), 2),
-                "change_value": round(info.get("regularMarketChange", 0), 2),
-                "volume": f"{int(info.get('volume', 0)):,}",
-                "market_cap": f"₹{(info.get('marketCap', 0) / 1_000_000_000):.2f}B",
+                "price": round(safe_float(info.get("currentPrice", 0)), 2),
+                "change_percent": round(safe_float(info.get("regularMarketChangePercent", 0)), 2),
+                "change_value": round(safe_float(info.get("regularMarketChange", 0)), 2),
+                "volume": format_volume(info.get("volume")),
+                "market_cap": format_market_cap(info.get("marketCap")),
                 "_raw_info": info
             })
-        except:
+        except Exception:
             data.append({
                 "symbol": s,
                 "name": f"{s} Ltd",
@@ -161,12 +185,10 @@ def get_live_data(symbols):
     return data
 
 def get_portfolio_symbols():
-    conn = sqlite3.connect(DB_NAME)
-    cur = conn.cursor()
-    cur.execute("SELECT symbol FROM portfolio")
-    out = [row[0] for row in cur.fetchall()]
-    conn.close()
-    return out
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT symbol FROM portfolio")
+        return [row[0] for row in cur.fetchall()]
 
 
 def sparkline_from_prices(prices, max_points=36):
@@ -183,11 +205,10 @@ def sparkline_from_prices(prices, max_points=36):
 # ============================================
 @app.route("/api/portfolio_data")
 def api_portfolio_data():
-    conn = sqlite3.connect(DB_NAME)
-    cur = conn.cursor()
-    cur.execute("SELECT symbol, name, sector FROM portfolio")
-    rows = cur.fetchall()
-    conn.close()
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT symbol, name, sector FROM portfolio ORDER BY sector, name")
+        rows = cur.fetchall()
 
     if not rows:
         return jsonify({"data": []})
@@ -207,13 +228,15 @@ def api_portfolio_data():
             df = yf.Ticker(sym + ".NS").history(period="1mo", interval="1d")
             if not df.empty:
                 spark_prices = df["Close"].dropna().tolist()
-        except:
+        except Exception:
             pass
+
+        meta_row = meta.get(sym, {"name": item["name"], "sector": "Unknown"})
 
         enriched.append({
             "symbol": sym,
-            "name": meta[sym]["name"],
-            "sector": meta[sym]["sector"],
+            "name": meta_row["name"],
+            "sector": meta_row["sector"],
             "price": item["price"],
             "change_value": item["change_value"],
             "change_percent": item["change_percent"],
@@ -299,26 +322,37 @@ def telecom():
 # ADD / REMOVE PORTFOLIO
 @app.post("/add_to_portfolio")
 def add_to_portfolio():
-    data = request.json
-    conn = sqlite3.connect(DB_NAME)
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT OR IGNORE INTO portfolio(symbol, name, sector)
-        VALUES (?, ?, ?)
-    """, (data["symbol"], data["name"], data["sector"]))
-    conn.commit()
-    conn.close()
-    return jsonify({"added": True})
+    data = request.get_json(silent=True) or {}
+    symbol = str(data.get("symbol", "")).strip().upper()
+    name = str(data.get("name", "")).strip()
+    sector = str(data.get("sector", "")).strip()
+
+    if not symbol or not name or not sector:
+        return jsonify({"added": False, "error": "symbol, name and sector are required"}), 400
+
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT OR IGNORE INTO portfolio(symbol, name, sector)
+            VALUES (?, ?, ?)
+        """, (symbol, name, sector))
+        inserted = cur.rowcount > 0
+
+    return jsonify({"added": inserted})
 
 @app.post("/remove_from_portfolio")
 def remove_from_portfolio():
-    symbol = request.json["symbol"]
-    conn = sqlite3.connect(DB_NAME)
-    cur = conn.cursor()
-    cur.execute("DELETE FROM portfolio WHERE symbol=?", (symbol,))
-    conn.commit()
-    conn.close()
-    return jsonify({"removed": True})
+    data = request.get_json(silent=True) or {}
+    symbol = str(data.get("symbol", "")).strip().upper()
+    if not symbol:
+        return jsonify({"removed": False, "error": "symbol is required"}), 400
+
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM portfolio WHERE symbol=?", (symbol,))
+        removed = cur.rowcount > 0
+
+    return jsonify({"removed": removed})
 
 @app.route("/dashboard")
 def dashboard_page():
@@ -326,11 +360,10 @@ def dashboard_page():
 
 @app.route("/portfolio")
 def portfolio_page():
-    conn = sqlite3.connect(DB_NAME)
-    cur = conn.cursor()
-    cur.execute("SELECT symbol, name, sector FROM portfolio")
-    rows = cur.fetchall()
-    conn.close()
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT symbol, name, sector FROM portfolio ORDER BY sector, name")
+        rows = cur.fetchall()
     return render_template("portfolio.html", stocks=rows)
 
 # API: AUTO REFRESH 1D CHART
@@ -355,7 +388,7 @@ def api_stock_chart(symbol):
 
         return jsonify({"dates": dates, "prices": prices})
 
-    except:
+    except Exception:
         return jsonify({"dates": [], "prices": []})
 
 @app.route("/stock/<symbol>")
@@ -371,7 +404,7 @@ def stock_detail(symbol):
             df = df.reset_index()
             idx = "Datetime" if "Datetime" in df.columns else "Date"
             return df[idx].dt.strftime("%d %b").tolist(), df["Close"].round(2).tolist()
-        except:
+        except Exception:
             return [], []
 
     # intraday
@@ -383,23 +416,26 @@ def stock_detail(symbol):
         idx = "Datetime" if "Datetime" in d1_df.columns else "Date"
         d1 = d1_df[idx].dt.strftime("%H:%M").tolist()
         p1 = d1_df["Close"].round(2).tolist()
-    except:
+    except Exception:
         d1, p1 = [], []
 
     d30, p30 = safe_history("1mo", "1d")
     d180, p180 = safe_history("6mo", "1wk")
 
-    info = ticker.info
+    try:
+        info = ticker.info or {}
+    except Exception:
+        info = {}
     news = get_stock_news(symbol)
 
     stock_data = {
         "symbol": symbol,
         "company_name": info.get("longName", f"{symbol} Ltd"),
-        "price": info.get("currentPrice"),
-        "change_percent": round(info.get("regularMarketChangePercent", 0), 2),
-        "change_value": round(info.get("regularMarketChange", 0), 2),
-        "volume": info.get("volume"),
-        "market_cap": info.get("marketCap"),
+        "price": round(safe_float(info.get("currentPrice", 0)), 2),
+        "change_percent": round(safe_float(info.get("regularMarketChangePercent", 0)), 2),
+        "change_value": round(safe_float(info.get("regularMarketChange", 0)), 2),
+        "volume": format_volume(info.get("volume")),
+        "market_cap": format_market_cap(info.get("marketCap")),
         "pe_ratio": info.get("trailingPE"),
 
         "chart_1d": {"dates": d1, "prices": p1},

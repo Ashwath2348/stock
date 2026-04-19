@@ -295,7 +295,210 @@ body {
 </div>
 
 <script>
-/* Keep your existing JS exactly same */
+(() => {
+  const tableBody = document.getElementById("tableBody");
+  const searchInput = document.getElementById("searchInput");
+  const clearBtn = document.getElementById("clearBtn");
+  let portfolioRows = [];
+
+  function esc(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function sparklineSvg(points) {
+    if (!Array.isArray(points) || points.length < 2) {
+      return "<span style='color:#94a3b8;font-size:0.85rem;'>N/A</span>";
+    }
+
+    const width = 160;
+    const height = 40;
+    const min = Math.min(...points);
+    const max = Math.max(...points);
+    const range = max - min || 1;
+
+    const path = points
+      .map((p, i) => {
+        const x = (i / (points.length - 1)) * width;
+        const y = height - ((p - min) / range) * (height - 2) - 1;
+        return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+      })
+      .join(" ");
+
+    const up = points[points.length - 1] >= points[0];
+    const stroke = up ? "#16a34a" : "#ef4444";
+
+    return `
+      <svg class="spark" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">
+        <path d="${path}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    `;
+  }
+
+  function groupBySector(rows) {
+    return rows.reduce((acc, row) => {
+      const key = row.sector || "Other";
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(row);
+      return acc;
+    }, {});
+  }
+
+  function rowTemplate(stock) {
+    const pctClass = Number(stock.change_percent) >= 0 ? "positive" : "negative";
+    const pctPrefix = Number(stock.change_percent) >= 0 ? "+" : "";
+
+    return `
+      <tr data-symbol="${esc(stock.symbol)}" data-name="${esc(stock.name)}" data-sector="${esc(stock.sector)}">
+        <td>
+          <div class="comp-wrap">
+            <div class="logo">${esc(stock.symbol).slice(0, 2)}</div>
+            <div>
+              <div><strong>${esc(stock.symbol)}</strong></div>
+              <div class="comp-name">${esc(stock.name)}</div>
+            </div>
+          </div>
+        </td>
+        <td>${sparklineSvg(stock.spark || [])}</td>
+        <td><strong>Rs ${Number(stock.price || 0).toFixed(2)}</strong></td>
+        <td class="${pctClass}">${pctPrefix}${Number(stock.change_percent || 0).toFixed(2)}%</td>
+        <td class="vol">${esc(stock.volume || "N/A")}</td>
+        <td>
+          <button class="analysis-btn" data-action="analyze" data-symbol="${esc(stock.symbol)}">Analyze</button>
+          <button class="remove-btn" data-action="remove" data-symbol="${esc(stock.symbol)}">Remove</button>
+        </td>
+      </tr>
+    `;
+  }
+
+  function renderRows(rows) {
+    if (!rows.length) {
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="6" style="text-align:center; padding:36px; color:#64748b;">
+            No matching stocks found.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    const grouped = groupBySector(rows);
+    const html = Object.keys(grouped)
+      .sort((a, b) => a.localeCompare(b))
+      .map((sector) => {
+        const sectionRows = grouped[sector].map(rowTemplate).join("");
+        return `
+          <tr class="sector-row"><td colspan="6">${esc(sector)}</td></tr>
+          ${sectionRows}
+        `;
+      })
+      .join("");
+
+    tableBody.innerHTML = html;
+  }
+
+  function applySearch() {
+    const q = (searchInput.value || "").trim().toLowerCase();
+    if (!q) {
+      renderRows(portfolioRows);
+      return;
+    }
+
+    const filtered = portfolioRows.filter((row) => {
+      const composite = `${row.symbol} ${row.name} ${row.sector}`.toLowerCase();
+      return composite.includes(q);
+    });
+    renderRows(filtered);
+  }
+
+  async function fetchPortfolio() {
+    tableBody.innerHTML = `
+      <tr>
+        <td colspan="6" style="text-align:center; padding:36px; color:#64748b;">
+          Loading portfolio...
+        </td>
+      </tr>
+    `;
+
+    try {
+      const resp = await fetch("/api/portfolio_data");
+      const payload = await resp.json();
+      portfolioRows = Array.isArray(payload.data) ? payload.data : [];
+
+      if (!portfolioRows.length) {
+        tableBody.innerHTML = `
+          <tr>
+            <td colspan="6" style="text-align:center; padding:36px; color:#64748b;">
+              Your watchlist is empty. Add stocks from a sector dashboard.
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      renderRows(portfolioRows);
+    } catch (err) {
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="6" style="text-align:center; padding:36px; color:#ef4444;">
+            Failed to load portfolio data. Please refresh.
+          </td>
+        </tr>
+      `;
+    }
+  }
+
+  async function removeStock(symbol) {
+    try {
+      const resp = await fetch("/remove_from_portfolio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol })
+      });
+      const out = await resp.json();
+      if (!resp.ok || !out.removed) {
+        throw new Error("remove failed");
+      }
+
+      portfolioRows = portfolioRows.filter((r) => r.symbol !== symbol);
+      applySearch();
+    } catch (err) {
+      window.alert("Could not remove stock right now. Please try again.");
+    }
+  }
+
+  tableBody.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-action]");
+    if (!btn) return;
+
+    const action = btn.getAttribute("data-action");
+    const symbol = btn.getAttribute("data-symbol");
+    if (!symbol) return;
+
+    if (action === "analyze") {
+      window.location.href = `/stock/${encodeURIComponent(symbol)}`;
+      return;
+    }
+
+    if (action === "remove") {
+      removeStock(symbol);
+    }
+  });
+
+  searchInput.addEventListener("input", applySearch);
+  clearBtn.addEventListener("click", () => {
+    searchInput.value = "";
+    applySearch();
+    searchInput.focus();
+  });
+
+  fetchPortfolio();
+})();
 </script>
 
 </body>

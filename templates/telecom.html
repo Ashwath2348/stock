@@ -282,7 +282,7 @@ Detailed Analysis
 <button class="port-btn added" disabled>✔ Already Added</button>
 {% else %}
 <button class="port-btn"
-onclick="addToPortfolio('{{ stock.symbol }}','{{ stock.name }}','Telecom',this)">
+onclick="addToPortfolio('{{ stock.symbol }}','{{ stock.name }}','{{ sector }}',this)">
 ➕ Add to Portfolio
 </button>
 {% endif %}
@@ -319,7 +319,7 @@ Detailed Analysis
 <button class="port-btn added" disabled>✔ Already Added</button>
 {% else %}
 <button class="port-btn"
-onclick="addToPortfolio('{{ stock.symbol }}','{{ stock.name }}','Telecom',this)">
+onclick="addToPortfolio('{{ stock.symbol }}','{{ stock.name }}','{{ sector }}',this)">
 ➕ Add to Portfolio
 </button>
 {% endif %}
