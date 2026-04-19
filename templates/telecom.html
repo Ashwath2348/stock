@@ -165,6 +165,21 @@ color:white;
 
 @media (max-width:768px){
 
+body{
+background:radial-gradient(circle at top right,#dbeafe 0%,#eef2ff 42%,#f8fafc 100%);
+}
+
+header,.index-ticker,.stock-card{
+background:rgba(255,255,255,.72);
+border:1px solid rgba(255,255,255,.68);
+backdrop-filter:blur(14px) saturate(145%);
+-webkit-backdrop-filter:blur(14px) saturate(145%);
+}
+
+.stock-card{
+box-shadow:0 14px 28px rgba(15,23,42,.12);
+}
+
 .container{padding:12px!important;}
 
 header{
@@ -199,6 +214,7 @@ padding:16px;
 .analysis-btn,.port-btn{
 padding:12px;
 font-size:15px;
+min-height:44px;
 }
 
 .stock-footer{
