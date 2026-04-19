@@ -238,24 +238,34 @@ def get_stock_news(symbol, max_items=8):
 
 def get_indices():
     indices = {
-        "NIFTY": "^NSEI",
-        "SENSEX": "^BSESN",
-        "BANKNIFTY": "^NSEBANK",
-        "FINNIFTY": "^CNXFIN"
+        "NIFTY": ["^NSEI"],
+        "SENSEX": ["^BSESN"],
+        "BANKNIFTY": ["^NSEBANK"],
+        "FINNIFTY": ["^CNXFIN", "NIFTY_FIN_SERVICE.NS"],
     }
 
     result = []
-    for name, symbol in indices.items():
-        try:
-            snapshot = fetch_ticker_snapshot(symbol, suffix="")
-            result.append({
-                "name": name,
-                "price": snapshot["price"],
-                "change": snapshot["change_value"],
-                "change_percent": snapshot["change_percent"],
-            })
-        except Exception:
+    for name, symbol_candidates in indices.items():
+        chosen_snapshot = None
+
+        for symbol in symbol_candidates:
+            try:
+                snapshot = fetch_ticker_snapshot(symbol, suffix="")
+                if snapshot["price"] > 0:
+                    chosen_snapshot = snapshot
+                    break
+            except Exception:
+                continue
+
+        if not chosen_snapshot:
             continue
+
+        result.append({
+            "name": name,
+            "price": chosen_snapshot["price"],
+            "change": chosen_snapshot["change_value"],
+            "change_percent": chosen_snapshot["change_percent"],
+        })
 
     return result
 
