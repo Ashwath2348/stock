@@ -90,7 +90,7 @@
 
       .main {
         margin-left: 0;
-        padding: 0.95rem 0.85rem 6.25rem;
+        padding: 0.95rem 0.85rem 6.1rem;
         background: #d9dee7;
       }
 
@@ -110,7 +110,7 @@
       }
 
       .header h1 {
-        font-size: 2rem;
+        font-size: 2.05rem;
         line-height: 1;
         color: #111827;
       }
@@ -126,18 +126,18 @@
         width: auto;
         min-width: 92px;
         min-height: 38px;
-        font-size: 0.95rem;
+        font-size: 0.92rem;
         border: none;
         border-radius: 12px;
-        box-shadow: 0 8px 14px rgba(37, 99, 235, 0.22);
+        box-shadow: 0 6px 12px rgba(37, 99, 235, 0.2);
       }
 
-      header {
+      .main > header {
         flex-direction: row;
         align-items: center;
         gap: 8px;
         margin: 0.2rem 0.1rem 0;
-        padding: 1rem;
+        padding: 1rem 1rem 0.95rem;
         border-radius: 16px;
         background: #e6e9ef;
         border: 1px solid #d7dce4;
@@ -159,37 +159,38 @@
         margin: 0.7rem 0.1rem;
       }
 
-      .index-ticker {
+      .main .index-ticker {
         width: 100%;
-        gap: 14px;
-        padding: 0.9rem 0.85rem;
+        gap: 18px;
+        padding: 0.95rem 0.9rem;
         border-radius: 14px;
         background: #e8ebf2;
         border: 1px solid #d7dce4;
         box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
       }
 
-      .index-item {
-        font-size: 0.95rem;
+      .main .index-item {
+        font-size: 0.9rem;
+        gap: 4px;
       }
 
       .container {
         padding: 0.35rem 0.1rem;
       }
 
-      h2 {
+      .main h2 {
         margin-top: 1.1rem;
         margin-bottom: 0.8rem;
-        font-size: 2rem;
+        font-size: 2.05rem;
         line-height: 1;
       }
 
-      .stock-grid {
+      .main .stock-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
         gap: 0.85rem;
       }
 
-      .stock-card {
+      .main .stock-card {
         background: #e8ebf2 !important;
         border: 1px solid #d7dce4;
         border-radius: 16px;
@@ -197,33 +198,38 @@
         padding: 0.9rem;
       }
 
-      .stock-symbol {
+      .main .icon-top-right img {
+        width: 24px;
+      }
+
+      .main .stock-symbol {
         font-size: 1.4rem;
         line-height: 1;
       }
 
-      .stock-name {
+      .main .stock-name {
         font-size: 0.86rem;
       }
 
-      .stock-price {
+      .main .stock-price {
         font-size: 1.6rem;
         line-height: 1.15;
       }
 
-      .stock-change {
+      .main .stock-change {
         font-size: 1.05rem;
       }
 
-      .stock-footer {
-        flex-direction: column;
+      .main .stock-footer {
+        flex-direction: row;
         gap: 4px;
-        align-items: flex-start;
+        align-items: center;
+        justify-content: space-between;
         font-size: 0.9rem;
       }
 
-      .analysis-btn,
-      .port-btn {
+      .main .analysis-btn,
+      .main .port-btn {
         min-height: 40px;
         padding: 0.6rem;
         border-radius: 10px;
@@ -246,16 +252,24 @@
 
       .mobile-bottom-nav a {
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
+        gap: 2px;
         text-decoration: none;
         color: #6b7280;
-        font-size: 0.85rem;
-        font-weight: 700;
+        font-size: 0.8rem;
+        font-weight: 500;
+      }
+
+      .mobile-bottom-nav .nav-icon {
+        font-size: 1.15rem;
+        line-height: 1;
       }
 
       .mobile-bottom-nav a.active {
         color: #2563eb;
+        font-weight: 700;
       }
     }
 
@@ -272,7 +286,7 @@
         flex: 1;
       }
 
-      header {
+      .main > header {
         flex-direction: column;
         align-items: flex-start;
       }
@@ -316,11 +330,11 @@
   <script src="{{ url_for('static', filename='js/script.js') }}"></script>
 
   <nav class="mobile-bottom-nav" aria-label="Mobile navigation">
-    <a href="{{ url_for('automotive') }}" class="active">Home</a>
-    <a href="#market-sectors">Sectors</a>
-    <a href="/dashboard">Watchlist</a>
-    <a href="{{ url_for('portfolio_page') }}">Portfolio</a>
-    <a href="#">More</a>
+    <a href="{{ url_for('automotive') }}" class="active"><span class="nav-icon">⌂</span><span>Home</span></a>
+    <a href="#market-sectors"><span class="nav-icon">▦</span><span>Sectors</span></a>
+    <a href="/dashboard"><span class="nav-icon">🔖</span><span>Watchlist</span></a>
+    <a href="{{ url_for('portfolio_page') }}"><span class="nav-icon">▣</span><span>Portfolio</span></a>
+    <a href="#"><span class="nav-icon">⋯</span><span>More</span></a>
   </nav>
 
   <script>
