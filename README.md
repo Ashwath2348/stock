@@ -1,13 +1,29 @@
-# Stock Sector Dashboard
+# StockQ - Indian Sector Stock Dashboard
 
-A Flask-based stock dashboard focused on Indian market sectors.
+StockQ is a Flask web app for tracking Indian market sectors, viewing top gainers and losers, and opening detailed stock pages with live charts and news.
 
-The app provides:
-- Sector-wise views (Automotive, Banking, Energy, Technology, Pharma, Telecom)
-- Live stock snapshots using Yahoo Finance data
-- Detailed stock pages with charts (1D, 1M, 6M)
-- Google News-based stock news feed with simple sentiment tags
-- A persistent portfolio watchlist using SQLite
+## Features
+
+- Sector dashboards: Automotive, Banking, Energy, Technology, Pharma, Telecom
+- Live price cards with change percent, volume, and market cap
+- Market index strip (NIFTY, SENSEX, BANKNIFTY, FINNIFTY)
+- Stock detail page with 1D, 1M, and 6M chart views
+- Latest news feed with lightweight sentiment labels
+- Portfolio watchlist stored in SQLite
+
+## UI Preview
+
+### Sector Dashboard (Automotive)
+
+This screen shows the left sector navigation, market index summary, and stock cards with quick actions.
+
+![Automotive Sector Dashboard](docs/screenshots/Screenshot%202026-04-19%20232624.png)
+
+### Stock Detail Page
+
+This screen shows core fundamentals, time-range chart toggles, and recent news sentiment cards for a selected stock.
+
+![Stock Detail Page](docs/screenshots/Screenshot%202026-04-19%20232807.png)
 
 ## Tech Stack
 
@@ -24,14 +40,19 @@ The app provides:
 stock/
   app.py
   requirements.txt
+  docs/
+    screenshots/
   static/
+    css/
+    js/
+    icons/
   templates/
 ```
 
 ## Prerequisites
 
-- Python 3.10+ recommended
-- Internet connection (for market/news data)
+- Python 3.10 or higher
+- Internet access for market data and news feeds
 
 ## Setup
 
@@ -55,18 +76,16 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Run the App
-
-From the project root:
+## Run Locally
 
 ```bash
 python app.py
 ```
 
-The server starts at:
-- `http://127.0.0.1:10000` (default)
+Default URL:
+- `http://127.0.0.1:10000`
 
-You can override the port:
+Custom port examples:
 
 Windows (PowerShell):
 ```powershell
@@ -81,77 +100,47 @@ PORT=5000 python app.py
 
 ## Main Routes
 
-- `/` or `/automotive` - Automotive sector dashboard
-- `/banking` - Banking sector dashboard
-- `/energy` - Energy sector dashboard
-- `/technology` - Technology sector dashboard
-- `/pharma` - Pharma sector dashboard
-- `/telecom` - Telecom sector dashboard
-- `/portfolio` - Portfolio page
-- `/dashboard` - Alias of portfolio page
-- `/stock/<symbol>` - Detailed stock page
-- `/api/portfolio_data` - Portfolio data for UI refresh
-- `/api/stock_chart/<symbol>` - Intraday chart data API
-- `POST /add_to_portfolio` - Add stock to portfolio
-- `POST /remove_from_portfolio` - Remove stock from portfolio
+- `/` or `/automotive`: Automotive dashboard
+- `/banking`: Banking dashboard
+- `/energy`: Energy dashboard
+- `/technology`: Technology dashboard
+- `/pharma`: Pharma dashboard
+- `/telecom`: Telecom dashboard
+- `/portfolio`: Portfolio page
+- `/dashboard`: Portfolio alias
+- `/stock/<symbol>`: Detailed stock page
+- `/api/portfolio_data`: Portfolio API for UI updates
+- `/api/stock_chart/<symbol>`: Intraday chart API
+- `POST /add_to_portfolio`: Add stock to portfolio
+- `POST /remove_from_portfolio`: Remove stock from portfolio
 
-## Screenshots and Demo
+## Data Storage
 
-Add visuals to help users quickly understand the UI and workflow.
-
-- Home dashboard: `docs/screenshots/home-dashboard.png`
-- Sector page (example: banking): `docs/screenshots/sector-banking.png`
-- Stock detail view: `docs/screenshots/stock-detail.png`
-- Portfolio page: `docs/screenshots/portfolio.png`
-- Optional walkthrough GIF: `docs/screenshots/demo.gif`
-
-Markdown template:
-
-```md
-## UI Preview
-
-### Home Dashboard
-![Home Dashboard](docs/screenshots/home-dashboard.png)
-
-### Sector Page
-![Sector Page](docs/screenshots/sector-banking.png)
-
-### Stock Detail
-![Stock Detail](docs/screenshots/stock-detail.png)
-
-### Portfolio
-![Portfolio](docs/screenshots/portfolio.png)
-
-### Quick Demo
-![Demo](docs/screenshots/demo.gif)
-```
-
-## Data and Storage
-
-- Portfolio data is stored in `portfolio.db` (auto-created in project root).
-- Table used: `portfolio(symbol, name, sector)`.
+- Local database: `portfolio.db` (created automatically)
+- Table: `portfolio(symbol, name, sector)`
 
 ## Notes
 
-- Tickers are queried with `.NS` suffix for NSE data.
-- Some symbols may return partial or empty data if Yahoo Finance has limited coverage.
-- News sentiment is keyword-based and intended as a lightweight indicator.
+- NSE symbols are queried using the `.NS` suffix.
+- Some symbols can return empty/partial data based on Yahoo Finance availability.
+- News sentiment tags are keyword-based, intended for quick context only.
 
 ## Development Roadmap
 
-- [ ] Add search/autocomplete for stock symbols across all sectors
-- [ ] Add date-range comparison charts (1Y, 3Y, 5Y)
-- [ ] Add portfolio performance metrics (PnL, allocation, sector exposure)
-- [ ] Cache API responses to reduce repeated Yahoo Finance requests
-- [ ] Add loading/empty/error UI states for all async widgets
-- [ ] Add unit tests for utility functions and route-level integration tests
-- [ ] Add Docker support for reproducible local and deployment environments
-- [ ] Add user authentication and multi-user portfolio isolation
+- [ ] Add symbol search and autocomplete
+- [ ] Add longer date ranges (1Y, 3Y, 5Y)
+- [ ] Add portfolio analytics (PnL, sector allocation)
+- [ ] Add caching to reduce repeated API calls
+- [ ] Add robust loading/error states for all async sections
+- [ ] Add tests for utility functions and route-level integration
+- [ ] Add Docker support for easier deployment
+- [ ] Add authentication and multi-user portfolios
 
 ## Deployment
 
-`gunicorn` is included in `requirements.txt` for production-style deployment.
-Example (Linux/macOS):
+`gunicorn` is included in `requirements.txt`.
+
+Example command (Linux/macOS):
 
 ```bash
 gunicorn -w 2 -b 0.0.0.0:10000 app:app
