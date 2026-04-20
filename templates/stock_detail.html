@@ -486,9 +486,9 @@
 
     // data from backend
     const ranges = {
-  "1D": { labels: {{ stock.chart_1d.dates | safe }}, prices: {{ stock.chart_1d.prices | safe }} },
-  "1M": { labels: {{ stock.chart_1m.dates | safe }}, prices: {{ stock.chart_1m.prices | safe }} },
-  "6M": { labels: {{ stock.chart_6m.dates | safe }}, prices: {{ stock.chart_6m.prices | safe }} }
+  "1D": { labels: {{ stock.chart_1d.dates | tojson }}, prices: {{ stock.chart_1d.prices | tojson }} },
+  "1M": { labels: {{ stock.chart_1m.dates | tojson }}, prices: {{ stock.chart_1m.prices | tojson }} },
+  "6M": { labels: {{ stock.chart_6m.dates | tojson }}, prices: {{ stock.chart_6m.prices | tojson }} }
 };
 
 

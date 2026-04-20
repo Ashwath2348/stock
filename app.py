@@ -519,14 +519,27 @@ def stock_detail(symbol):
     symbol = symbol.upper()
     ticker = yf.Ticker(symbol + ".NS")
 
+    def extract_chart_points(df, date_fmt):
+        if df is None or df.empty:
+            return [], []
+
+        idx = "Datetime" if "Datetime" in df.columns else "Date"
+        if idx not in df.columns or "Close" not in df.columns:
+            return [], []
+
+        cleaned = df[[idx, "Close"]].dropna(subset=["Close"]).copy()
+        if cleaned.empty:
+            return [], []
+
+        dates = cleaned[idx].dt.strftime(date_fmt).tolist()
+        prices = [round(safe_number(p, 0.0), 2) for p in cleaned["Close"].tolist()]
+        return dates, prices
+
     def safe_history(period, interval):
         try:
             df = ticker.history(period=period, interval=interval)
-            if df.empty:
-                return [], []
             df = df.reset_index()
-            idx = "Datetime" if "Datetime" in df.columns else "Date"
-            return df[idx].dt.strftime("%d %b").tolist(), df["Close"].round(2).tolist()
+            return extract_chart_points(df, "%d %b")
         except:
             return [], []
 
@@ -536,9 +549,7 @@ def stock_detail(symbol):
         if d1_df.empty:
             d1_df = ticker.history(period="5d", interval="15m")
         d1_df = d1_df.reset_index()
-        idx = "Datetime" if "Datetime" in d1_df.columns else "Date"
-        d1 = d1_df[idx].dt.strftime("%H:%M").tolist()
-        p1 = d1_df["Close"].round(2).tolist()
+        d1, p1 = extract_chart_points(d1_df, "%H:%M")
     except:
         d1, p1 = [], []
 
