@@ -495,7 +495,7 @@
       window.location.href = "/dashboard";
     }
 
-    (function setupAutoRefresh() {
+    (function setupLiveQuoteRefresh() {
       const minDelayMs = 20000;
       const maxDelayMs = 30000;
 
@@ -503,15 +503,90 @@
         return Math.floor(Math.random() * (maxDelayMs - minDelayMs + 1)) + minDelayMs;
       }
 
-      function scheduleNextRefresh() {
-        setTimeout(() => {
-          if (document.visibilityState === "visible") {
-            window.location.reload();
+      function formatPrice(value) {
+        const num = Number(value);
+        if (!Number.isFinite(num)) {
+          return "N/A";
+        }
+        return `₹${num.toFixed(2)}`;
+      }
+
+      function formatChange(value) {
+        const num = Number(value);
+        if (!Number.isFinite(num)) {
+          return "0.00%";
+        }
+        return `${num >= 0 ? "+" : ""}${num.toFixed(2)}%`;
+      }
+
+      async function refreshQuotesOnly() {
+        const cards = Array.from(document.querySelectorAll(".stock-card"));
+        if (!cards.length) {
+          return;
+        }
+
+        const symbols = cards
+          .map(card => card.querySelector(".stock-symbol")?.textContent?.trim())
+          .filter(Boolean);
+
+        if (!symbols.length) {
+          return;
+        }
+
+        const uniqueSymbols = [...new Set(symbols)];
+        const response = await fetch(`/api/live_quotes?symbols=${encodeURIComponent(uniqueSymbols.join(","))}`);
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = await response.json();
+        const quotes = payload?.quotes || {};
+
+        cards.forEach(card => {
+          const symbol = card.querySelector(".stock-symbol")?.textContent?.trim();
+          if (!symbol || !quotes[symbol]) {
             return;
           }
 
-          // If tab is hidden, postpone until next cycle to avoid unnecessary reloads.
-          scheduleNextRefresh();
+          const quote = quotes[symbol];
+          const priceEl = card.querySelector(".stock-price");
+          const changeEl = card.querySelector(".stock-change");
+          const footerSpans = card.querySelectorAll(".stock-footer span");
+
+          if (priceEl) {
+            priceEl.textContent = formatPrice(quote.price);
+          }
+
+          if (changeEl) {
+            const changeValue = Number(quote.change_percent || 0);
+            changeEl.textContent = formatChange(changeValue);
+            changeEl.classList.remove("positive", "negative");
+            changeEl.classList.add(changeValue >= 0 ? "positive" : "negative");
+          }
+
+          if (footerSpans[0]) {
+            footerSpans[0].textContent = `Vol: ${quote.volume || "N/A"}`;
+          }
+          if (footerSpans[1]) {
+            footerSpans[1].textContent = `MCap: ${quote.market_cap || "N/A"}`;
+          }
+        });
+      }
+
+      function scheduleNextRefresh() {
+        setTimeout(() => {
+          if (document.visibilityState !== "visible") {
+            scheduleNextRefresh();
+            return;
+          }
+
+          refreshQuotesOnly()
+            .catch(() => {
+              // Keep scheduling even if one refresh fails.
+            })
+            .finally(() => {
+              scheduleNextRefresh();
+            });
         }, randomDelay());
       }
 

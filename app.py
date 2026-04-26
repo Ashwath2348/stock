@@ -541,6 +541,29 @@ def api_stock_chart(symbol):
     except:
         return jsonify({"dates": [], "prices": []})
 
+
+@app.route("/api/live_quotes")
+def api_live_quotes():
+    raw_symbols = request.args.get("symbols", "")
+    symbols = [s.strip().upper() for s in raw_symbols.split(",") if s.strip()]
+
+    # Prevent overly large quote batches from one request.
+    symbols = symbols[:30]
+
+    if not symbols:
+        return jsonify({"quotes": {}})
+
+    quotes = {}
+    for item in get_live_data(symbols):
+        quotes[item["symbol"]] = {
+            "price": item["price"],
+            "change_percent": item["change_percent"],
+            "volume": item["volume"],
+            "market_cap": item["market_cap"],
+        }
+
+    return jsonify({"quotes": quotes})
+
 @app.route("/stock/<symbol>")
 def stock_detail(symbol):
     symbol = symbol.upper()
