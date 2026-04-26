@@ -163,7 +163,7 @@ body {
     bottom: 0;
     height: 62px;
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     background: #f3f4f6;
     border-top: 1px solid #d1d5db;
     box-shadow: 0 -6px 16px rgba(15, 23, 42, 0.1);
@@ -185,5 +185,11 @@ body {
   .mobile-bottom-nav a.active {
     color: #2563eb;
     font-weight: 700;
+  }
+
+  .mobile-bottom-nav .nav-icon-img {
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
   }
 }
