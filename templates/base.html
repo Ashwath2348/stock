@@ -494,6 +494,29 @@
     function goToDashboard() {
       window.location.href = "/dashboard";
     }
+
+    (function setupAutoRefresh() {
+      const minDelayMs = 20000;
+      const maxDelayMs = 30000;
+
+      function randomDelay() {
+        return Math.floor(Math.random() * (maxDelayMs - minDelayMs + 1)) + minDelayMs;
+      }
+
+      function scheduleNextRefresh() {
+        setTimeout(() => {
+          if (document.visibilityState === "visible") {
+            window.location.reload();
+            return;
+          }
+
+          // If tab is hidden, postpone until next cycle to avoid unnecessary reloads.
+          scheduleNextRefresh();
+        }, randomDelay());
+      }
+
+      scheduleNextRefresh();
+    })();
   </script>
 
 </body>
