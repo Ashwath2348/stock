@@ -1,4 +1,5 @@
 import os
+import logging
 from flask import Flask, render_template, jsonify, request
 import yfinance as yf
 import feedparser
@@ -15,8 +16,10 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-DB_NAME = "portfolio.db"
+DB_NAME = os.environ.get("DB_NAME", "portfolio.db")
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 
 
@@ -45,7 +48,12 @@ def get_db_connection():
             raise RuntimeError("psycopg2 is required when DATABASE_URL is set")
         return psycopg2.connect(normalized_database_url())
 
-    return sqlite3.connect(DB_NAME)
+    try:
+        return sqlite3.connect(DB_NAME)
+    except sqlite3.OperationalError as exc:
+        fallback = os.path.join("/tmp", "portfolio.db")
+        logger.warning("SQLite connect failed for %s (%s). Falling back to %s", DB_NAME, exc, fallback)
+        return sqlite3.connect(fallback)
 
 
 def safe_number(value, default=0.0):
@@ -145,21 +153,29 @@ def fetch_ticker_snapshot(symbol, suffix=".NS"):
     }
 
 def init_db():
-    conn = get_db_connection()
-    cur = conn.cursor()
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS portfolio (
-            symbol TEXT PRIMARY KEY,
-            name TEXT,
-            sector TEXT
-        )
-    """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS portfolio (
+                symbol TEXT PRIMARY KEY,
+                name TEXT,
+                sector TEXT
+            )
+        """)
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
 
-init_db()   # 🔥 THIS LINE IS REQUIRED
+try:
+    init_db()
+except Exception:
+    # Keep app booting so platform logs remain accessible instead of immediate worker crash.
+    logger.exception("Database initialization failed during startup")
 
 
 
@@ -488,6 +504,17 @@ def portfolio_page():
     rows = cur.fetchall()
     conn.close()
     return render_template("portfolio.html", stocks=rows)
+
+
+@app.route("/health")
+def health():
+    try:
+        conn = get_db_connection()
+        conn.close()
+        return jsonify({"ok": True}), 200
+    except Exception as exc:
+        logger.exception("Health check failed")
+        return jsonify({"ok": False, "error": str(exc)}), 500
 
 # API: AUTO REFRESH 1D CHART
 @app.route("/api/stock_chart/<symbol>")
