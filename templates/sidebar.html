@@ -165,7 +165,9 @@
     padding: 0.9rem;
     border: 1px solid #d7dce4;
     margin: 0.25rem 0.95rem 5.2rem;
-    background: #e8ebf2;
+    background:
+      radial-gradient(circle at 8% 0%, #eff5ff 0%, rgba(239, 245, 255, 0) 35%),
+      #e8ebf2;
   }
 
   .sidebar h2,
@@ -187,8 +189,8 @@
   .sector-list {
     display: grid;
     grid-auto-flow: column;
-    grid-auto-columns: minmax(94px, 1fr);
-    gap: 0.6rem;
+    grid-auto-columns: minmax(100px, 1fr);
+    gap: 0.65rem;
     overflow-x: auto;
     white-space: normal;
     padding-bottom: 0.1rem;
@@ -206,22 +208,23 @@
 
   .sector-item a {
     height: 104px;
-    padding: 0.55rem;
-    border-radius: 12px;
+    padding: 0.5rem;
+    border-radius: 14px;
     justify-content: center;
-    border: 1px solid #d7dce4;
-    background: #f2f4f8;
+    border: 1px solid #d7deea;
+    background: linear-gradient(180deg, #f5f8fc 0%, #edf1f7 100%);
+    box-shadow: 0 6px 14px rgba(15, 23, 42, 0.07);
   }
 
   .sector-item.active a,
   .sector-item a:hover {
     transform: none;
-    background: #e8eefc;
-    border-color: #bfccf8;
+    background: linear-gradient(180deg, #e8efff 0%, #dfe8ff 100%);
+    border-color: #b8c7f4;
   }
 
   .sector-header {
-    gap: 0.3rem;
+    gap: 0.32rem;
     flex-direction: column;
     justify-content: center;
     text-align: center;
@@ -232,17 +235,32 @@
   }
 
   .icon {
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
   }
 
   .sector-header h3 {
     display: block !important;
-    font-size: 0.76rem;
+    font-size: 0.72rem;
     font-weight: 600;
-    line-height: 1.1;
+    line-height: 1.15;
     color: #334155;
     text-align: center;
+  }
+
+  @media (max-width: 400px) {
+    .sector-list {
+      grid-auto-columns: minmax(92px, 1fr);
+    }
+
+    .sector-item a {
+      height: 96px;
+    }
+
+    .icon {
+      width: 28px;
+      height: 28px;
+    }
   }
 
 }
