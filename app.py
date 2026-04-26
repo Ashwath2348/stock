@@ -260,28 +260,93 @@ def get_indices():
         "FINNIFTY": ["^CNXFIN", "NIFTY_FIN_SERVICE.NS"],
     }
 
+    def from_history_frame(df):
+        try:
+            if df is None or df.empty or "Close" not in df.columns:
+                return None
+
+            closes = df["Close"].dropna().tolist()
+            if not closes:
+                return None
+
+            price = safe_number(closes[-1], 0.0)
+            prev = safe_number(closes[-2], price) if len(closes) >= 2 else price
+            if price <= 0:
+                return None
+
+            change = price - prev
+            change_percent = (change / prev * 100) if prev else 0.0
+
+            return {
+                "price": round(price, 2),
+                "change": round(change, 2),
+                "change_percent": round(change_percent, 2),
+            }
+        except Exception:
+            return None
+
+    # Prefer bulk history download first since it is generally more reliable for index symbols.
+    symbol_to_snapshot = {}
+    all_symbols = sorted({sym for candidates in indices.values() for sym in candidates})
+
+    try:
+        bulk = yf.download(
+            tickers=" ".join(all_symbols),
+            period="5d",
+            interval="1d",
+            group_by="ticker",
+            auto_adjust=False,
+            progress=False,
+            threads=True,
+        )
+
+        if bulk is not None and not bulk.empty:
+            for sym in all_symbols:
+                frame = None
+                try:
+                    if hasattr(bulk.columns, "levels") and len(bulk.columns.levels) > 1:
+                        frame = bulk.get(sym)
+                    else:
+                        frame = bulk
+                except Exception:
+                    frame = None
+
+                snap = from_history_frame(frame)
+                if snap:
+                    symbol_to_snapshot[sym] = snap
+    except Exception:
+        logger.exception("Bulk index fetch failed; falling back to per-symbol fetch")
+
     result = []
     for name, symbol_candidates in indices.items():
-        chosen_snapshot = None
+        chosen = None
 
         for symbol in symbol_candidates:
-            try:
-                snapshot = fetch_ticker_snapshot(symbol, suffix="")
-                if snapshot["price"] > 0:
-                    chosen_snapshot = snapshot
-                    break
-            except Exception:
-                continue
+            snap = symbol_to_snapshot.get(symbol)
+            if snap:
+                chosen = snap
+                break
 
-        if not chosen_snapshot:
-            continue
+        # Per-symbol fallback if bulk path does not return a usable snapshot.
+        if not chosen:
+            for symbol in symbol_candidates:
+                try:
+                    snapshot = fetch_ticker_snapshot(symbol, suffix="")
+                    if snapshot["price"] > 0:
+                        chosen = {
+                            "price": snapshot["price"],
+                            "change": snapshot["change_value"],
+                            "change_percent": snapshot["change_percent"],
+                        }
+                        break
+                except Exception:
+                    continue
 
-        result.append({
-            "name": name,
-            "price": chosen_snapshot["price"],
-            "change": chosen_snapshot["change_value"],
-            "change_percent": chosen_snapshot["change_percent"],
-        })
+        if not chosen:
+            # Keep UI stable even if provider is temporarily unavailable.
+            chosen = {"price": "N/A", "change": 0, "change_percent": 0}
+
+        result.append({"name": name, **chosen})
 
     return result
 
