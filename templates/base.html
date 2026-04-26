@@ -10,6 +10,15 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 
   <style>
+    :root {
+      --brand-blue: #2563eb;
+      --brand-blue-deep: #1e40af;
+      --panel-soft: #f8fafc;
+      --text-strong: #0f172a;
+      --text-muted: #64748b;
+      --ring: rgba(37, 99, 235, 0.25);
+    }
+
     @keyframes cardFadeUp {
       from {
         opacity: 0;
@@ -27,7 +36,10 @@
       justify-content: space-between;
       gap: 12px;
       padding: 1rem 1.5rem;
-      background-color: #f8fafc;
+      background-color: var(--panel-soft);
+      border: 1px solid rgba(255, 255, 255, 0.75);
+      box-shadow: 0 10px 20px rgba(15, 23, 42, 0.06);
+      backdrop-filter: blur(8px);
       border-radius: 14px;
       margin-bottom: 1rem;
     }
@@ -55,13 +67,13 @@
     .header h1 {
       font-size: 1.55rem;
       font-weight: 800;
-      color: #0f172a;
+      color: var(--text-strong);
       margin: 0;
     }
 
     .refresh-btn {
       padding: 8px 18px;
-      background: #2563eb;
+      background: var(--brand-blue);
       color: #fff;
       font-weight: 600;
       border: none;
@@ -72,8 +84,56 @@
     }
 
     .refresh-btn:hover {
-      background: #1e40af;
+      background: var(--brand-blue-deep);
       transform: translateY(-1px);
+    }
+
+    .refresh-pill {
+      padding: 0.44rem 0.7rem;
+      border-radius: 999px;
+      background: #e2e8f0;
+      color: #334155;
+      font-weight: 700;
+      font-size: 0.78rem;
+      letter-spacing: 0.01em;
+      min-height: 32px;
+      display: inline-flex;
+      align-items: center;
+      white-space: nowrap;
+    }
+
+    .refresh-pill.syncing {
+      background: #dbeafe;
+      color: #1e3a8a;
+    }
+
+    .refresh-pill.ok {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .refresh-pill.warn {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .stock-card {
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .stock-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+    }
+
+    .stock-card.flash-update {
+      box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.34), 0 12px 24px rgba(15, 23, 42, 0.12);
+    }
+
+    a:focus-visible,
+    button:focus-visible {
+      outline: 3px solid var(--ring);
+      outline-offset: 2px;
     }
 
     /* ===== DESKTOP (UNCHANGED) ===== */
@@ -134,6 +194,11 @@
         display: flex;
         flex-direction: row;
         gap: 8px;
+      }
+
+      .refresh-pill {
+        min-height: 36px;
+        padding: 0.35rem 0.62rem;
       }
 
       .refresh-btn {
@@ -341,8 +406,19 @@
       }
 
       .mobile-bottom-nav a.active {
-        color: #2563eb;
+        color: var(--brand-blue);
         font-weight: 700;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
       }
     }
 
@@ -470,6 +546,7 @@
       </div>
 
       <div class="header-actions">
+        <span class="refresh-pill" id="quoteStatus" aria-live="polite">Auto-refresh ready</span>
         <button class="refresh-btn" onclick="goToDashboard()">Watchlist</button>
       </div>
     </div>
@@ -498,6 +575,18 @@
     (function setupLiveQuoteRefresh() {
       const minDelayMs = 20000;
       const maxDelayMs = 30000;
+      const statusEl = document.getElementById("quoteStatus");
+
+      function setRefreshStatus(message, statusClass) {
+        if (!statusEl) {
+          return;
+        }
+        statusEl.textContent = message;
+        statusEl.classList.remove("syncing", "ok", "warn");
+        if (statusClass) {
+          statusEl.classList.add(statusClass);
+        }
+      }
 
       function randomDelay() {
         return Math.floor(Math.random() * (maxDelayMs - minDelayMs + 1)) + minDelayMs;
@@ -522,6 +611,7 @@
       async function refreshQuotesOnly() {
         const cards = Array.from(document.querySelectorAll(".stock-card"));
         if (!cards.length) {
+          setRefreshStatus("Auto-refresh idle", "ok");
           return;
         }
 
@@ -530,12 +620,16 @@
           .filter(Boolean);
 
         if (!symbols.length) {
+          setRefreshStatus("Auto-refresh idle", "ok");
           return;
         }
+
+        setRefreshStatus("Syncing prices...", "syncing");
 
         const uniqueSymbols = [...new Set(symbols)];
         const response = await fetch(`/api/live_quotes?symbols=${encodeURIComponent(uniqueSymbols.join(","))}`);
         if (!response.ok) {
+          setRefreshStatus("Sync failed", "warn");
           return;
         }
 
@@ -555,6 +649,8 @@
 
           if (priceEl) {
             priceEl.textContent = formatPrice(quote.price);
+            card.classList.add("flash-update");
+            setTimeout(() => card.classList.remove("flash-update"), 900);
           }
 
           if (changeEl) {
@@ -571,11 +667,14 @@
             footerSpans[1].textContent = `MCap: ${quote.market_cap || "N/A"}`;
           }
         });
+
+        setRefreshStatus(`Updated ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`, "ok");
       }
 
       function scheduleNextRefresh() {
         setTimeout(() => {
           if (document.visibilityState !== "visible") {
+            setRefreshStatus("Auto-refresh paused", "warn");
             scheduleNextRefresh();
             return;
           }
@@ -583,6 +682,7 @@
           refreshQuotesOnly()
             .catch(() => {
               // Keep scheduling even if one refresh fails.
+              setRefreshStatus("Sync failed", "warn");
             })
             .finally(() => {
               scheduleNextRefresh();
@@ -590,6 +690,7 @@
         }, randomDelay());
       }
 
+      setRefreshStatus("Auto-refresh ready", "ok");
       scheduleNextRefresh();
     })();
   </script>
